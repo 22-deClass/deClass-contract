@@ -14,8 +14,17 @@ contract NFTSimple {
   mapping(address => uint256[]) private _ownedTokens;
 
 
+  function _exists(uint256 tokenId) internal view virtual returns (bool) {
+    return tokenOwner[tokenId] != address(0);
+  }
+
+
+
   // to 에게 token Id 를 발행하는데 tokenURI가 적혀있음.
   function mintWithTokenURI(address to, uint256 tokenId, string memory tokenURI) public returns (bool) {
+    require(to != address(0), "KIP17: mint to the zero address");
+    require(!_exists(tokenId), "KIP17: token already minted");
+    
     tokenOwner[tokenId] = to;
     tokenURIs[tokenId] = tokenURI;
 
@@ -68,4 +77,6 @@ contract NFTSimple {
   function burn(address owner, uint256 tokenId) public {
     safeTransferFrom(owner, address(0), tokenId);
   }
+
+
 }
