@@ -230,6 +230,85 @@ library Address {
     }
 }
 
+pragma solidity ^0.5.0;
+
+/**
+ * @title Roles
+ * @dev Library for managing addresses assigned to a Role.
+ */
+library Roles {
+    struct Role {
+        mapping (address => bool) bearer;
+    }
+
+    /**
+     * @dev Give an account access to this role.
+     */
+    function add(Role storage role, address account) internal {
+        require(!has(role, account), "Roles: account already has role");
+        role.bearer[account] = true;
+    }
+
+    /**
+     * @dev Remove an account's access to this role.
+     */
+    function remove(Role storage role, address account) internal {
+        require(has(role, account), "Roles: account does not have role");
+        role.bearer[account] = false;
+    }
+
+    /**
+     * @dev Check if an account has this role.
+     * @return bool
+     */
+    function has(Role storage role, address account) internal view returns (bool) {
+        require(account != address(0), "Roles: account is the zero address");
+        return role.bearer[account];
+    }
+}
+
+pragma solidity ^0.5.0;
+
+
+contract MinterRole {
+    using Roles for Roles.Role;
+
+    event MinterAdded(address indexed account);
+    event MinterRemoved(address indexed account);
+
+    Roles.Role private _minters;
+
+    constructor () internal {
+        _addMinter(msg.sender);
+    }
+
+    modifier onlyMinter() {
+        require(isMinter(msg.sender), "MinterRole: caller does not have the Minter role");
+        _;
+    }
+
+    function isMinter(address account) public view returns (bool) {
+        return _minters.has(account);
+    }
+
+    function addMinter(address account) public onlyMinter {
+        _addMinter(account);
+    }
+
+    function renounceMinter() public {
+        _removeMinter(msg.sender);
+    }
+
+    function _addMinter(address account) internal {
+        _minters.add(account);
+        emit MinterAdded(account);
+    }
+
+    function _removeMinter(address account) internal {
+        _minters.remove(account);
+        emit MinterRemoved(account);
+    }
+}
 
 pragma solidity ^0.5.0;
 
@@ -326,17 +405,6 @@ contract IKIP37 is IKIP13 {
         uint256 value
     );
 
-    /**
-     * @dev Equivalent to multiple {TransferSingle} events, where `operator`, `from` and `to` are the same for all
-     * transfers.
-     */
-    event TransferBatch(
-        address indexed operator,
-        address indexed from,
-        address indexed to,
-        uint256[] ids,
-        uint256[] values
-    );
 
     /**
      * @dev Emitted when `account` grants or revokes permission to `operator` to transfer their tokens, according to
@@ -365,38 +433,6 @@ contract IKIP37 is IKIP13 {
         view
         returns (uint256);
 
-    /**
-     * @dev Batch-operations version of {balanceOf}.
-     *
-     * Requirements:
-     *
-     * - `accounts` and `ids` must have the same length.
-     */
-    function balanceOfBatch(address[] calldata accounts, uint256[] calldata ids)
-        external
-        view
-        returns (uint256[] memory);
-
-    /**
-     * @dev Grants or revokes permission to `operator` to transfer the caller's tokens, according to `approved`,
-     *
-     * Emits an {ApprovalForAll} event.
-     *
-     * Requirements:
-     *
-     * - `operator` cannot be the caller.
-     */
-    function setApprovalForAll(address operator, bool approved) external;
-
-    /**
-     * @dev Returns true if `operator` is approved to transfer ``account``'s tokens.
-     *
-     * See {setApprovalForAll}.
-     */
-    function isApprovedForAll(address account, address operator)
-        external
-        view
-        returns (bool);
 
     /**
      * @dev Transfers `amount` tokens of token type `id` from `from` to `to`.
@@ -416,27 +452,9 @@ contract IKIP37 is IKIP13 {
         address to,
         uint256 id,
         uint256 amount,
-        bytes calldata data
+        bytes memory data
     ) external;
 
-    /**
-     * @dev Batch-operations version of {safeTransferFrom}.
-     *
-     * Emits a {TransferBatch} event.
-     *
-     * Requirements:
-     *
-     * - `ids` and `amounts` must have the same length.
-     * - If `to` refers to a smart contract, it must implement {IKIP37Receiver-onKIP37BatchReceived} and return the
-     * acceptance magic value.
-     */
-    function safeBatchTransferFrom(
-        address from,
-        address to,
-        uint256[] calldata ids,
-        uint256[] calldata amounts,
-        bytes calldata data
-    ) external;
 }
 
 // SPDX-License-Identifier: MIT
@@ -483,26 +501,6 @@ contract IERC1155Receiver is IKIP13 {
         bytes calldata data
     ) external returns (bytes4);
 
-    /**
-        @dev Handles the receipt of a multiple ERC1155 token types. This function
-        is called at the end of a `safeBatchTransferFrom` after the balances have
-        been updated. To accept the transfer(s), this must return
-        `bytes4(keccak256("onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)"))`
-        (i.e. 0xbc197c81, or its own function selector).
-        @param operator The address which initiated the batch transfer (i.e. msg.sender)
-        @param from The address which previously owned the token
-        @param ids An array containing ids of each token being transferred (order and length must match values array)
-        @param values An array containing amounts of each token being transferred (order and length must match ids array)
-        @param data Additional data with no specified format
-        @return `bytes4(keccak256("onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)"))` if transfer is allowed
-    */
-    function onERC1155BatchReceived(
-        address operator,
-        address from,
-        uint256[] calldata ids,
-        uint256[] calldata values,
-        bytes calldata data
-    ) external returns (bytes4);
 }
 
 // SPDX-License-Identifier: MIT
@@ -531,26 +529,6 @@ contract IKIP37Receiver is IKIP13 {
         bytes calldata data
     ) external returns (bytes4);
 
-    /**
-        @dev Handles the receipt of a multiple KIP37 token types. This function
-        is called at the end of a `safeBatchTransferFrom` after the balances have
-        been updated. To accept the transfer(s), this must return
-        `bytes4(keccak256("onKIP37BatchReceived(address,address,uint256[],uint256[],bytes)"))`
-        (i.e. 0x9b49e332, or its own function selector).
-        @param operator The address which initiated the batch transfer (i.e. msg.sender)
-        @param from The address which previously owned the token
-        @param ids An array containing ids of each token being transferred (order and length must match values array)
-        @param values An array containing amounts of each token being transferred (order and length must match ids array)
-        @param data Additional data with no specified format
-        @return `bytes4(keccak256("onKIP37BatchReceived(address,address,uint256[],uint256[],bytes)"))` if transfer is allowed
-    */
-    function onKIP37BatchReceived(
-        address operator,
-        address from,
-        uint256[] calldata ids,
-        uint256[] calldata values,
-        bytes calldata data
-    ) external returns (bytes4);
 }
 
 // SPDX-License-Identifier: MIT
@@ -562,9 +540,10 @@ pragma solidity ^0.5.0;
  * @dev Implementation of the basic standard multi-token.
  * Originally based on code by Enjin: https://github.com/enjin/erc-1155
  */
-contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI {
+contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI, MinterRole {
     using SafeMath for uint256;
     using Address for address;
+    using Roles for Roles.Role;
 
     // Mapping from token ID to account balances
     mapping(uint256 => mapping(address => uint256)) private _balances;
@@ -609,14 +588,6 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI {
     // which can be also obtained as `IERC1155Receiver(0).onERC1155Received.selector`
     bytes4 private constant _ERC1155_RECEIVED = 0xf23a6e61;
 
-    // Equals to `bytes4(keccak256("onKIP37BatchReceived(address,address,uint256[],uint256[],bytes)"))`
-    // which can be also obtained as `IKIP37Receiver(0).onKIP37BatchReceived.selector`
-    bytes4 private constant _KIP37_BATCH_RECEIVED = 0x9b49e332;
-
-    // Equals to `bytes4(keccak256("onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)"))`
-    // which can be also obtained as `IERC1155Receiver(0).onERC1155BatchReceived.selector`
-    bytes4 private constant _ERC1155_BATCH_RECEIVED = 0xbc197c81;
-
     /**
      * @dev See {_setURI}.
      */
@@ -640,9 +611,10 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI {
      * Clients calling this function must replace the `\{id\}` substring with the
      * actual token type ID.
      */
-    function uri(uint256) external view returns (string memory) {
-        return _uri;
-    }
+    
+    // function uri(uint256) external view returns (string memory) {
+    //     return _uri;
+    // }
 
     /**
      * @dev See {IKIP37-balanceOf}.
@@ -663,63 +635,6 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI {
         return _balances[id][account];
     }
 
-    /**
-     * @dev See {IKIP37-balanceOfBatch}.
-     *
-     * Requirements:
-     *
-     * - `accounts` and `ids` must have the same length.
-     */
-    function balanceOfBatch(address[] memory accounts, uint256[] memory ids)
-        public
-        view
-        returns (uint256[] memory)
-    {
-        require(
-            accounts.length == ids.length,
-            "KIP37: accounts and ids length mismatch"
-        );
-
-        uint256[] memory batchBalances = new uint256[](accounts.length);
-
-        for (uint256 i = 0; i < accounts.length; ++i) {
-            require(
-                accounts[i] != address(0),
-                "KIP37: batch balance query for the zero address"
-            );
-            batchBalances[i] = _balances[ids[i]][accounts[i]];
-        }
-
-        return batchBalances;
-    }
-
-    /**
-     * @dev See {IKIP37-setApprovalForAll}.
-     */
-    function setApprovalForAll(address operator, bool approved) public {
-        require(
-            _msgSender() != operator,
-            "KIP37: setting approval status for self"
-        );
-
-        _operatorApprovals[_msgSender()][operator] = approved;
-        emit ApprovalForAll(_msgSender(), operator, approved);
-    }
-
-    /**
-     * @dev See {IKIP37-isApprovedForAll}.
-     */
-    function isApprovedForAll(address account, address operator)
-        public
-        view
-        returns (bool)
-    {
-        return _operatorApprovals[account][operator];
-    }
-
-    function totalSupply(uint256 _tokenId) public view returns (uint256) {
-        return _totalSupply[_tokenId];
-    }
 
     /**
      * @dev See {IKIP37-safeTransferFrom}.
@@ -733,7 +648,7 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI {
     ) public {
         require(to != address(0), "KIP37: transfer to the zero address");
         require(
-            from == _msgSender() || isApprovedForAll(from, _msgSender()),
+            from == _msgSender(),
             "KIP37: caller is not owner nor approved"
         );
 
@@ -743,8 +658,8 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI {
             operator,
             from,
             to,
-            _asSingletonArray(id),
-            _asSingletonArray(amount),
+            id,
+            amount,
             data
         );
 
@@ -769,54 +684,23 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI {
         );
     }
 
-    /**
-     * @dev See {IKIP37-safeBatchTransferFrom}.
-     */
-    function safeBatchTransferFrom(
-        address from,
-        address to,
-        uint256[] memory ids,
-        uint256[] memory amounts,
-        bytes memory data
-    ) public {
-        require(
-            ids.length == amounts.length,
-            "KIP37: ids and amounts length mismatch"
-        );
-        require(to != address(0), "KIP37: transfer to the zero address");
-        require(
-            from == _msgSender() || isApprovedForAll(from, _msgSender()),
-            "KIP37: transfer caller is not owner nor approved"
-        );
+    // NEED TO DEVELOP BELOW
+    mapping (uint256 => address) public seller;
 
-        address operator = _msgSender();
+    function buyNFT(uint256 tokenId, uint256 amount, address marketAddress) public payable returns (bool) {
+        address payable receiver = address(uint160(seller[tokenId]));
 
-        _beforeTokenTransfer(operator, from, to, ids, amounts, data);
+        // 10**18 PEB = 1 Klay
+        receiver.transfer(10**16);
 
-        for (uint256 i = 0; i < ids.length; ++i) {
-            uint256 id = ids[i];
-            uint256 amount = amounts[i];
+        safeTransferFrom(address(this), msg.sender, tokenId, "0x00");
+        return true;
+    }
 
-            _balances[id][from] = _balances[id][from].sub(
-                amount,
-                "KIP37: insufficient balance for transfer"
-            );
-            _balances[id][to] = _balances[id][to].add(amount);
-        }
+    function onKIP37Received(address operator, address from, uint256 id, uint256 value, bytes memory data) public returns (bytes4) {
+        seller [id] = from;
 
-        emit TransferBatch(operator, from, to, ids, amounts);
-
-        require(
-            _doSafeBatchTransferAcceptanceCheck(
-                operator,
-                from,
-                to,
-                ids,
-                amounts,
-                data
-            ),
-            "KIP37: batch transfer to non KIP37Receiver implementer"
-        );
+        return bytes4(keccak256("onKIP37Received(address,address,uint256,uint256,bytes)"));
     }
 
     /**
@@ -867,8 +751,8 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI {
             operator,
             address(0),
             account,
-            _asSingletonArray(id),
-            _asSingletonArray(amount),
+            id,
+            amount,
             data
         );
 
@@ -889,50 +773,6 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI {
         );
     }
 
-    /**
-     * @dev Batch-operations version of {_mint}.
-     *
-     * Requirements:
-     *
-     * - `ids` and `amounts` must have the same length.
-     * - If `to` refers to a smart contract, it must implement {IKIP37Receiver-onKIP37BatchReceived} and return the
-     * acceptance magic value.
-     */
-    function _mintBatch(
-        address to,
-        uint256[] memory ids,
-        uint256[] memory amounts,
-        bytes memory data
-    ) internal {
-        require(to != address(0), "KIP37: mint to the zero address");
-        require(
-            ids.length == amounts.length,
-            "KIP37: ids and amounts length mismatch"
-        );
-
-        address operator = _msgSender();
-
-        _beforeTokenTransfer(operator, address(0), to, ids, amounts, data);
-
-        for (uint256 i = 0; i < ids.length; i++) {
-            _balances[ids[i]][to] = amounts[i].add(_balances[ids[i]][to]);
-            _totalSupply[ids[i]] = amounts[i].add(_totalSupply[ids[i]]);
-        }
-
-        emit TransferBatch(operator, address(0), to, ids, amounts);
-
-        require(
-            _doSafeBatchTransferAcceptanceCheck(
-                operator,
-                address(0),
-                to,
-                ids,
-                amounts,
-                data
-            ),
-            "KIP37: batch transfer to non KIP37Receiver implementer"
-        );
-    }
 
     /**
      * @dev Destroys `amount` tokens of token type `id` from `account`
@@ -955,8 +795,8 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI {
             operator,
             account,
             address(0),
-            _asSingletonArray(id),
-            _asSingletonArray(amount),
+            id,
+            amount,
             ""
         );
 
@@ -973,42 +813,6 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI {
         emit TransferSingle(operator, account, address(0), id, amount);
     }
 
-    /**
-     * @dev Batch-operations version of {_burn}.
-     *
-     * Requirements:
-     *
-     * - `ids` and `amounts` must have the same length.
-     */
-    function _burnBatch(
-        address account,
-        uint256[] memory ids,
-        uint256[] memory amounts
-    ) internal {
-        require(account != address(0), "KIP37: burn from the zero address");
-        require(
-            ids.length == amounts.length,
-            "KIP37: ids and amounts length mismatch"
-        );
-
-        address operator = _msgSender();
-
-        _beforeTokenTransfer(operator, account, address(0), ids, amounts, "");
-
-        for (uint256 i = 0; i < ids.length; i++) {
-            _balances[ids[i]][account] = _balances[ids[i]][account].sub(
-                amounts[i],
-                "KIP37: burn amount exceeds balance"
-            );
-
-            _totalSupply[ids[i]] = _totalSupply[ids[i]].sub(
-                amounts[i],
-                "KIP37: burn amount exceeds total supply"
-            );
-        }
-
-        emit TransferBatch(operator, account, address(0), ids, amounts);
-    }
 
     /**
      * @dev Hook that is called before any token transfer. This includes minting
@@ -1034,8 +838,8 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI {
         address operator,
         address from,
         address to,
-        uint256[] memory ids,
-        uint256[] memory amounts,
+        uint256 id,
+        uint256 amount,
         bytes memory data
     ) internal {}
 
@@ -1091,90 +895,20 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI {
         return false;
     }
 
-    function _doSafeBatchTransferAcceptanceCheck(
-        address operator,
-        address from,
-        address to,
-        uint256[] memory ids,
-        uint256[] memory amounts,
-        bytes memory data
-    ) private returns (bool) {
-        bool success;
-        bytes memory returndata;
-
-        if (!to.isContract()) {
-            return true;
-        }
-
-        (success, returndata) = to.call(
-            abi.encodeWithSelector(
-                _ERC1155_BATCH_RECEIVED,
-                operator,
-                from,
-                ids,
-                amounts,
-                data
-            )
-        );
-        if (
-            returndata.length != 0 &&
-            abi.decode(returndata, (bytes4)) == _ERC1155_BATCH_RECEIVED
-        ) {
-            return true;
-        }
-
-        (success, returndata) = to.call(
-            abi.encodeWithSelector(
-                _KIP37_BATCH_RECEIVED,
-                operator,
-                from,
-                ids,
-                amounts,
-                data
-            )
-        );
-        if (
-            returndata.length != 0 &&
-            abi.decode(returndata, (bytes4)) == _KIP37_BATCH_RECEIVED
-        ) {
-            return true;
-        }
-
-        return false;
-    }
-
-    function _asSingletonArray(uint256 element)
-        private
-        pure
-        returns (uint256[] memory)
-    {
-        uint256[] memory array = new uint256[](1);
-        array[0] = element;
-
-        return array;
-    }
-}
-
-// SPDX-License-Identifier: MIT
-
-pragma solidity ^0.5.0;
-
-/**
- * @dev Extension of {KIP37} that allows token holders to destroy both their
- * own tokens and those that they have been approved to use.
- */
-contract KIP37Burnable is KIP37 {
-    /*
+// INSERTED BURNABLE AND MINTABLE
+    // BURNABLE BELOW
+/*
      *     bytes4(keccak256('burn(address,uint256,uint256)')) == 0xf5298aca
      *     bytes4(keccak256('burnBatch(address,uint256[],uint256[])')) == 0x6b20c454
      *
      *     => 0xf5298aca ^ 0x6b20c454 == 0x9e094e9e
      */
-    bytes4 private constant _INTERFACE_ID_KIP37_BURNABLE = 0x9e094e9e;
 
-    constructor() public {
-        _registerInterface(_INTERFACE_ID_KIP37_BURNABLE);
-    }
+    // bytes4 private constant _INTERFACE_ID_KIP37_BURNABLE = 0x9e094e9e;
+
+    // constructor() public {
+    //     _registerInterface(_INTERFACE_ID_KIP37_BURNABLE);
+    // }
 
     function burn(
         address account,
@@ -1182,326 +916,33 @@ contract KIP37Burnable is KIP37 {
         uint256 value
     ) public {
         require(
-            account == _msgSender() || isApprovedForAll(account, _msgSender()),
+            account == _msgSender(),
             "KIP37: caller is not owner nor approved"
         );
 
         _burn(account, id, value);
     }
 
-    function burnBatch(
+    function destruct(
         address account,
-        uint256[] memory ids,
-        uint256[] memory values
+        uint256 id
     ) public {
         require(
-            account == _msgSender() || isApprovedForAll(account, _msgSender()),
+            account == _msgSender(),
             "KIP37: caller is not owner nor approved"
         );
-
-        _burnBatch(account, ids, values);
-    }
-}
-
-pragma solidity ^0.5.0;
-
-/**
- * @title Roles
- * @dev Library for managing addresses assigned to a Role.
- */
-library Roles {
-    struct Role {
-        mapping (address => bool) bearer;
+        uint256 value;
+        value=balanceOf(account,id);
+        _burn(account, id, value);
+        
+        renounceCreator(id);
+        delete _uris[id];
     }
 
-    /**
-     * @dev Give an account access to this role.
-     */
-    function add(Role storage role, address account) internal {
-        require(!has(role, account), "Roles: account already has role");
-        role.bearer[account] = true;
-    }
 
-    /**
-     * @dev Remove an account's access to this role.
-     */
-    function remove(Role storage role, address account) internal {
-        require(has(role, account), "Roles: account does not have role");
-        role.bearer[account] = false;
-    }
+    // MINTABLE BELOW
 
-    /**
-     * @dev Check if an account has this role.
-     * @return bool
-     */
-    function has(Role storage role, address account) internal view returns (bool) {
-        require(account != address(0), "Roles: account is the zero address");
-        return role.bearer[account];
-    }
-}
-
-pragma solidity ^0.5.0;
-
-
-contract MinterRole {
-    using Roles for Roles.Role;
-
-    event MinterAdded(address indexed account);
-    event MinterRemoved(address indexed account);
-
-    Roles.Role private _minters;
-
-    constructor () internal {
-        _addMinter(msg.sender);
-    }
-
-    modifier onlyMinter() {
-        require(isMinter(msg.sender), "MinterRole: caller does not have the Minter role");
-        _;
-    }
-
-    function isMinter(address account) public view returns (bool) {
-        return _minters.has(account);
-    }
-
-    function addMinter(address account) public onlyMinter {
-        _addMinter(account);
-    }
-
-    function renounceMinter() public {
-        _removeMinter(msg.sender);
-    }
-
-    function _addMinter(address account) internal {
-        _minters.add(account);
-        emit MinterAdded(account);
-    }
-
-    function _removeMinter(address account) internal {
-        _minters.remove(account);
-        emit MinterRemoved(account);
-    }
-}
-
-
-pragma solidity ^0.5.0;
-
-contract PauserRole {
-    using Roles for Roles.Role;
-
-    event PauserAdded(address indexed account);
-    event PauserRemoved(address indexed account);
-
-    Roles.Role private _pausers;
-
-    constructor () internal {
-        _addPauser(msg.sender);
-    }
-
-    modifier onlyPauser() {
-        require(isPauser(msg.sender), "PauserRole: caller does not have the Pauser role");
-        _;
-    }
-
-    function isPauser(address account) public view returns (bool) {
-        return _pausers.has(account);
-    }
-
-    function addPauser(address account) public onlyPauser {
-        _addPauser(account);
-    }
-
-    function renouncePauser() public {
-        _removePauser(msg.sender);
-    }
-
-    function _addPauser(address account) internal {
-        _pausers.add(account);
-        emit PauserAdded(account);
-    }
-
-    function _removePauser(address account) internal {
-        _pausers.remove(account);
-        emit PauserRemoved(account);
-    }
-}
-
-pragma solidity ^0.5.0;
-
-/**
- * @dev Contract module which allows children to implement an emergency stop
- * mechanism that can be triggered by an authorized account.
- *
- * This module is used through inheritance. It will make available the
- * modifiers `whenNotPaused` and `whenPaused`, which can be applied to
- * the functions of your contract. Note that they will not be pausable by
- * simply including this module, only once the modifiers are put in place.
- */
-contract Pausable is PauserRole {
-    /**
-     * @dev Emitted when the pause is triggered by a pauser (`account`).
-     */
-    event Paused(address account);
-
-    /**
-     * @dev Emitted when the pause is lifted by a pauser (`account`).
-     */
-    event Unpaused(address account);
-
-    bool private _paused;
-
-    /**
-     * @dev Initializes the contract in unpaused state. Assigns the Pauser role
-     * to the deployer.
-     */
-    constructor () internal {
-        _paused = false;
-    }
-
-    /**
-     * @dev Returns true if the contract is paused, and false otherwise.
-     */
-    function paused() public view returns (bool) {
-        return _paused;
-    }
-
-    /**
-     * @dev Modifier to make a function callable only when the contract is not paused.
-     */
-    modifier whenNotPaused() {
-        require(!_paused, "Pausable: paused");
-        _;
-    }
-
-    /**
-     * @dev Modifier to make a function callable only when the contract is paused.
-     */
-    modifier whenPaused() {
-        require(_paused, "Pausable: not paused");
-        _;
-    }
-
-    /**
-     * @dev Called by a pauser to pause, triggers stopped state.
-     */
-    function pause() public onlyPauser whenNotPaused {
-        _paused = true;
-        emit Paused(msg.sender);
-    }
-
-    /**
-     * @dev Called by a pauser to unpause, returns to normal state.
-     */
-    function unpause() public onlyPauser whenPaused {
-        _paused = false;
-        emit Unpaused(msg.sender);
-    }
-}
-
-// SPDX-License-Identifier: MIT
-
-pragma solidity ^0.5.0;
-
-
-/**
- * @dev KIP37 token with pausable token transfers, minting and burning.
- *
- * Useful for scenarios such as preventing trades until the end of an evaluation
- * period, or having an emergency switch for freezing all token transfers in the
- * event of a large bug.
- *
- * _Available since v3.1._
- */
-contract KIP37Pausable is KIP37, Pausable {
-    mapping(uint256 => bool) private _tokenPaused;
-
-    /*
-     *     bytes4(keccak256('pause()')) == 0x8456cb59
-     *     bytes4(keccak256('pause(uint256)')) == 0x136439dd
-     *     bytes4(keccak256('paused()')) == 0x5c975abb
-     *     bytes4(keccak256('paused(uint256)')) == 0x00dde10e
-     *     bytes4(keccak256('unpause()')) == 0x3f4ba83a
-     *     bytes4(keccak256('unpause(uint256)')) == 0xfabc1cbc
-     *
-     *     => 0x8456cb59 ^ 0x136439dd ^ 0x5c975abb ^
-     *        0x00dde10e ^ 0x3f4ba83a ^ 0xfabc1cbc == 0x0e8ffdb7
-     */
-    bytes4 private constant _INTERFACE_ID_KIP37_PAUSABLE = 0x0e8ffdb7;
-
-    constructor() public {
-        _registerInterface(_INTERFACE_ID_KIP37_PAUSABLE);
-    }
-
-    /**
-     * @dev Emitted when the pause is triggered by a pauser (`account`) with token ID.
-     */
-    event Paused(uint256 tokenId, address account);
-
-    /**
-     * @dev Emitted when the pause is lifted by a pauser (`account`) with token ID.
-     */
-    event Unpaused(uint256 tokenId, address account);
-
-    /// @notice Checks whether the specific token is paused.
-    /// @return True if the specific token is paused, false otherwise
-    function paused(uint256 _id) public view returns (bool) {
-        return _tokenPaused[_id];
-    }
-
-    /// @notice Pauses actions related to transfer and approval of the specific token.
-    /// @dev Throws if `msg.sender` is not allowed to pause.
-    ///   Throws if the specific token is paused.
-    function pause(uint256 _id) public onlyPauser {
-        require(_tokenPaused[_id] == false, "KIP37Pausable: already paused");
-        _tokenPaused[_id] = true;
-        emit Paused(_id, msg.sender);
-    }
-
-    /// @notice Resumes from the paused state of the specific token.
-    /// @dev Throws if `msg.sender` is not allowed to unpause.
-    ///   Throws if the specific token is not paused.
-    function unpause(uint256 _id) public onlyPauser {
-        require(_tokenPaused[_id] == true, "KIP37Pausable: already unpaused");
-        _tokenPaused[_id] = false;
-        emit Unpaused(_id, msg.sender);
-    }
-
-    /**
-     * @dev See {KIP37-_beforeTokenTransfer}.
-     *
-     * Requirements:
-     *
-     * - the contract must not be paused.
-     */
-    function _beforeTokenTransfer(
-        address operator,
-        address from,
-        address to,
-        uint256[] memory ids,
-        uint256[] memory amounts,
-        bytes memory data
-    ) internal {
-        require(!paused(), "KIP37Pausable: token transfer while paused");
-        for (uint256 i = 0; i < ids.length; i++) {
-            require(
-                _tokenPaused[ids[i]] == false,
-                "KIP37Pausable: the token is paused"
-            );
-        }
-    }
-}
-
-
-
-pragma solidity ^0.5.0;
-
-
-/**
- * @dev Extension of {KIP37} that allows token holders to destroy both their
- * own tokens and those that they have been approved to use.
- */
-contract KIP37Mintable is KIP37, MinterRole {
-    /*
+/*
      *     bytes4(keccak256('create(uint256,uint256,string)')) == 0x4b068c78
      *     bytes4(keccak256('mint(uint256,address,uint256)')) == 0x836a1040
      *     bytes4(keccak256('mint(uint256,address[],uint256[])')) == 0xcfa84fc1
@@ -1509,20 +950,30 @@ contract KIP37Mintable is KIP37, MinterRole {
      *
      *     => 0x4b068c78 ^ 0x836a1040 ^ 0xcfa84fc1 ^ 0xd81d0a15 == 0xdfd9d9ec
      */
-    bytes4 private constant _INTERFACE_ID_KIP37_MINTABLE = 0xdfd9d9ec;
+    // bytes4 private constant _INTERFACE_ID_KIP37_MINTABLE = 0xdfd9d9ec;
 
     // id => creators
     mapping(uint256 => address) public creators;
 
     mapping(uint256 => string) _uris;
 
-    constructor() public {
-        _registerInterface(_INTERFACE_ID_KIP37_MINTABLE);
-    }
+    // constructor() public {
+    //     _registerInterface(_INTERFACE_ID_KIP37_MINTABLE);
+    // }
 
     function _exists(uint256 tokenId) internal view returns (bool) {
         address creator = creators[tokenId];
         return creator != address(0);
+    }
+    
+
+    function renounceCreator(uint256 id) public {
+        _removeCreator(id);
+        renounceMinter();
+    }
+
+    function _removeCreator(uint256 id) internal {
+        delete creators[id];        
     }
 
     /**
@@ -1582,51 +1033,165 @@ contract KIP37Mintable is KIP37, MinterRole {
         _mint(_to, _id, _value, "");
     }
 
-    /// @notice Mints tokens of the specific token type `_id` in a batch and assigns the tokens according to the variables `_toList` and `_values`.
-    /// @dev Throws if `msg.sender` is not allowed to mint.
-    ///   MUST emit one or more `TransferSingle` events.
-    ///   MUST revert if the length of `_toList` is not the same as the length of `_values`.
-    /// @param _id The token id to mint.
-    /// @param _toList The list of addresses that will receive the minted tokens.
-    /// @param _values The list of quantities of tokens being minted.
-    function mint(
-        uint256 _id,
-        address[] memory _toList,
-        uint256[] memory _values
-    ) public onlyMinter {
-        require(_exists(_id), "KIP37: nonexistent token");
-        require(
-            _toList.length == _values.length,
-            "KIP37: toList and _values length mismatch"
-        );
-        for (uint256 i = 0; i < _toList.length; ++i) {
-            address to = _toList[i];
-            uint256 value = _values[i];
-            _mint(to, _id, value, "");
-        }
-    }
 
-    /// @notice Mints multiple KIP37 tokens of the specific token types `_ids` in a batch and assigns the tokens according to the variables `_to` and `_values`.
-    /// @dev Throws if `msg.sender` is not allowed to mint.
-    ///   MUST emit one or more `TransferSingle` events or a single `TransferBatch` event.
-    ///   MUST revert if the length of `_ids` is not the same as the length of `_values`.
-    /// @param _to The address that will receive the minted tokens.
-    /// @param _ids The list of the token ids to mint.
-    /// @param _values The list of quantities of tokens being minted.
-    function mintBatch(
-        address _to,
-        uint256[] memory _ids,
-        uint256[] memory _values
-    ) public onlyMinter {
-        for (uint256 i = 0; i < _ids.length; ++i) {
-            require(_exists(_ids[i]), "KIP37: nonexistent token");
-        }
-        _mintBatch(_to, _ids, _values, "");
-    }
 }
+
+// SPDX-License-Identifier: MIT
+
+// pragma solidity ^0.5.0;
+
+/**
+ * @dev Extension of {KIP37} that allows token holders to destroy both their
+ * own tokens and those that they have been approved to use.
+//  */
+// contract KIP37Burnable is KIP37 {
+//     /*
+//      *     bytes4(keccak256('burn(address,uint256,uint256)')) == 0xf5298aca
+//      *     bytes4(keccak256('burnBatch(address,uint256[],uint256[])')) == 0x6b20c454
+//      *
+//      *     => 0xf5298aca ^ 0x6b20c454 == 0x9e094e9e
+//      */
+//     bytes4 private constant _INTERFACE_ID_KIP37_BURNABLE = 0x9e094e9e;
+
+//     constructor() public {
+//         _registerInterface(_INTERFACE_ID_KIP37_BURNABLE);
+//     }
+
+//     function burn(
+//         address account,
+//         uint256 id,
+//         uint256 value
+//     ) public {
+//         require(
+//             account == _msgSender(),
+//             "KIP37: caller is not owner nor approved"
+//         );
+
+//         _burn(account, id, value);
+//     }
+
+//     // function destruct(
+//     //     address account,
+//     //     uint256 id
+//     // ) public {
+//     //     require(
+//     //         account == _msgSender(),
+//     //         "KIP37: caller is not owner nor approved"
+//     //     );
+//     //     uint256 value;
+//     //     value=balanceOf(account,id);
+//     //     _burn(account, id, value);
+//     //     MinterRole.renounceMinter();
+//     //     KIP37Mintable.renounceCreator(id); // 구현 필요한 함수
+//     // }
+ 
+// }
+
+
+
+// pragma solidity ^0.5.0;
+
+
+// /**
+//  * @dev Extension of {KIP37} that allows token holders to destroy both their
+//  * own tokens and those that they have been approved to use.
+//  */
+// contract KIP37Mintable is KIP37, MinterRole {
+//     /*
+//      *     bytes4(keccak256('create(uint256,uint256,string)')) == 0x4b068c78
+//      *     bytes4(keccak256('mint(uint256,address,uint256)')) == 0x836a1040
+//      *     bytes4(keccak256('mint(uint256,address[],uint256[])')) == 0xcfa84fc1
+//      *     bytes4(keccak256('mintBatch(address,uint256[],uint256[])')) == 0xd81d0a15
+//      *
+//      *     => 0x4b068c78 ^ 0x836a1040 ^ 0xcfa84fc1 ^ 0xd81d0a15 == 0xdfd9d9ec
+//      */
+//     bytes4 private constant _INTERFACE_ID_KIP37_MINTABLE = 0xdfd9d9ec;
+
+//     // id => creators
+//     mapping(uint256 => address) public creators;
+
+//     mapping(uint256 => string) _uris;
+
+//     constructor() public {
+//         _registerInterface(_INTERFACE_ID_KIP37_MINTABLE);
+//     }
+
+//     function _exists(uint256 tokenId) internal view returns (bool) {
+//         address creator = creators[tokenId];
+//         return creator != address(0);
+//     }
+    
+
+//     function renounceCreator(uint256 id) public {
+//         _removeCreator(id);
+//     }
+
+//     function _removeCreator(uint256 id) internal {
+//         delete creators[id];        
+//     }
+
+//     /**
+//      * @dev See {IKIP37MetadataURI-uri}.
+//      *
+//      * This implementation returns the same URI for *all* token types. It relies
+//      * on the token type ID substituion mechanism
+//      * http://kips.klaytn.com/KIPs/kip-37#metadata
+//      *
+//      * Clients calling this function must replace the `\{id\}` substring with the
+//      * actual token type ID.
+//      */
+//     function uri(uint256 tokenId) external view returns (string memory) {
+//         string memory customURI = string(_uris[tokenId]);
+//         if(bytes(customURI).length != 0) {
+//             return customURI;
+//         }
+
+//         return _uri;
+//     }
+
+//     /// @notice Creates a new token type and assigns _initialSupply to the minter.
+//     /// @dev Throws if `msg.sender` is not allowed to create.
+//     ///   Throws if the token id is already used.
+//     /// @param _id The token id to create.
+//     /// @param _initialSupply The amount of tokens being minted.
+//     /// @param _uri The token URI of the created token.
+//     /// @return A boolean that indicates if the operation was successful.
+//     function create(
+//         uint256 _id,
+//         uint256 _initialSupply,
+//         string memory _uri
+//     ) public onlyMinter returns (bool) {
+//         require(!_exists(_id), "KIP37: token already created");
+
+//         creators[_id] = msg.sender;
+//         _mint(msg.sender, _id, _initialSupply, "");
+
+//         if (bytes(_uri).length > 0) {
+//             _uris[_id] = _uri;
+//             emit URI(_uri, _id);
+//         }
+//     }
+
+//     /// @notice Mints tokens of the specific token type `_id` and assigns the tokens according to the variables `_to` and `_value`.
+//     /// @dev Throws if `msg.sender` is not allowed to mint.
+//     ///   MUST emit an event `TransferSingle`.
+//     /// @param _id The token id to mint.
+//     /// @param _to The address that will receive the minted tokens.
+//     /// @param _value The quantity of tokens being minted.
+//     function mint(
+//         uint256 _id,
+//         address _to,
+//         uint256 _value
+//     ) public onlyMinter {
+//         require(_exists(_id), "KIP37: nonexistent token");
+//         _mint(_to, _id, _value, "");
+//     }
+
+
+// }
 
 pragma solidity ^0.5.0;
 
-contract KIP37Token is KIP37, KIP37Burnable, KIP37Pausable, KIP37Mintable {
+contract KIP37Token is KIP37 {
     constructor(string memory uri) public KIP37(uri) {}
 }
