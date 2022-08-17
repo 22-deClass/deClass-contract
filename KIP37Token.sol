@@ -231,6 +231,66 @@ library Address {
 }
 
 pragma solidity ^0.5.0;
+library addressArrayUtils {  
+
+    function reverse(address[] storage a) internal returns (address[] storage) {
+        address t;
+        for (uint i = 0; i < a.length / 2; i++) {
+            t = a[i];
+            a[i] = a[a.length - i - 1];
+            a[a.length - i - 1] = t;
+        }
+        return a;
+    }   
+
+    function remove(address[] storage a, uint256 num) internal returns (address[] memory) {
+        
+        for (uint i = num; i < a.length-1 ; i++) {
+            a[i] = a[i+1];            
+        }
+        a.pop();
+        return a;
+    }
+
+    function shift(address[] storage array) internal returns (address[] storage) {
+        array=reverse(array);
+        array.pop();
+        array=reverse(array);
+        return array;
+    }
+
+}
+
+pragma solidity ^0.5.0;
+library uintArrayUtils {  
+
+    function reverse(uint256[] storage a) internal returns (uint256[] storage) {
+        uint256 t;
+        for (uint256 i = 0; i < a.length / 2; i++) {
+            t = a[i];
+            a[i] = a[a.length - i - 1];
+            a[a.length - i - 1] = t;
+        }
+        return a;
+    }   
+
+    function remove(uint256[] storage a, uint256 num) internal returns (uint256[] memory) {
+        for (uint256 i = num; i < a.length-1 ; i++) {
+            a[i] = a[i+1];            
+        }
+        a.pop();
+        return a;
+    }
+
+    function shift(uint256[] storage array) internal returns (uint256[] storage) {
+        array=reverse(array);
+        array.pop();
+        array=reverse(array);
+        return array;
+    }
+}
+
+pragma solidity ^0.5.0;
 
 /**
  * @title Roles
@@ -452,7 +512,7 @@ contract IKIP37 is IKIP13 {
         address to,
         uint256 id,
         uint256 amount,
-        bytes memory data
+        bytes calldata data
     ) external;
 
 }
@@ -684,21 +744,9 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI, MinterRole {
         );
     }
 
-    // NEED TO DEVELOP BELOW
-    mapping (uint256 => address) public seller;
 
-    function buyNFT(uint256 tokenId, uint256 amount, address marketAddress) public payable returns (bool) {
-        address payable receiver = address(uint160(seller[tokenId]));
-
-        // 10**18 PEB = 1 Klay
-        receiver.transfer(10**16);
-
-        safeTransferFrom(address(this), msg.sender, tokenId, "0x00");
-        return true;
-    }
-
-    function onKIP37Received(address operator, address from, uint256 id, uint256 value, bytes memory data) public returns (bytes4) {
-        seller [id] = from;
+    function onKIP37Received() pure public returns (bytes4) {
+        
 
         return bytes4(keccak256("onKIP37Received(address,address,uint256,uint256,bytes)"));
     }
@@ -1189,6 +1237,37 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI, MinterRole {
 
 
 // }
+
+pragma solidity ^0.5.0;
+contract NFTMarket {
+    
+    // NEED TO DEVELOP BELOW
+    address[][][] public _sellers; // _sellers[id][sellPrice][idx]=seller's address
+    uint256[][][] public _queue; // _queue[id][sellPrice][idx]=amount
+
+    function sellNFT(uint256 tokenId, uint256 amount, address marketAddress, uint256 sellPrice) public returns (bool) {
+        // _sellers[tokenId][sellPrice][msg.sender]=amount;
+        _sellers[tokenId][sellPrice].push(msg.sender);
+        _queue[tokenId][sellPrice].push(amount);
+
+        KIP37Token(marketAddress).safeTransferFrom(msg.sender, marketAddress, tokenId, amount, "0x00");
+        return true;
+    }
+
+    function buyNFT(uint256 tokenId, uint256 amount, address marketAddress, uint256 buyPrice) public payable returns (bool) {
+        address payable receiver = address(uint160(_sellers[tokenId][buyPrice][0]));
+
+        // 10**18 PEB = 1 Klay
+        receiver.transfer(10**16);
+
+        KIP37Token(marketAddress).safeTransferFrom(address(this), msg.sender, tokenId, amount, "0x00");
+        return true;
+    }
+
+    function getBalanceOfMarket() view public returns (uint256[] memory) {
+        return _queue[100][10000];
+    }
+}
 
 pragma solidity ^0.5.0;
 
