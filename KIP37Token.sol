@@ -629,7 +629,7 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI, MinterRole {
      *     => 0x00fdd58e ^ 0x4e1273f4 ^ 0xa22cb465 ^
      *        0xe985e9c5 ^ 0xf242432a ^ 0x2eb2c2d6 ^ 0xbd85b039 == 0x6433ca1f
      */
-    bytes4 public constant _INTERFACE_ID_KIP37 = 0x6433ca1f;
+    bytes4 private constant _INTERFACE_ID_KIP37 = 0x6433ca1f;
 
     /*
      *     bytes4(keccak256('uri(uint256)')) == 0x0e89341c
@@ -695,6 +695,33 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI, MinterRole {
         return _balances[id][account];
     }
 
+    /**
+     * @dev See {IKIP37-setApprovalForAll}.
+     */
+    function setApprovalForAll(address operator, bool approved) public {
+        require(
+            _msgSender() != operator,
+            "KIP37: setting approval status for self"
+        );
+
+        _operatorApprovals[_msgSender()][operator] = approved;
+        emit ApprovalForAll(_msgSender(), operator, approved);
+    }
+
+    /**
+     * @dev See {IKIP37-isApprovedForAll}.
+     */
+    function isApprovedForAll(address account, address operator)
+        public
+        view
+        returns (bool)
+    {
+        return _operatorApprovals[account][operator];
+    }
+
+    function totalSupply(uint256 _tokenId) public view returns (uint256) {
+        return _totalSupply[_tokenId];
+    }
 
     /**
      * @dev See {IKIP37-safeTransferFrom}.
@@ -708,7 +735,7 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI, MinterRole {
     ) public {
         require(to != address(0), "KIP37: transfer to the zero address");
         require(
-            from == _msgSender(),
+            from == _msgSender() || isApprovedForAll(from, _msgSender()),
             "KIP37: caller is not owner nor approved"
         );
 
@@ -1053,16 +1080,16 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI, MinterRole {
     function create(
         uint256 _id,
         uint256 _initialSupply,
-        string memory _uri2
+        string memory _Curi
     ) public onlyMinter returns (bool) {
         require(!_exists(_id), "KIP37: token already created");
 
         creators[_id] = msg.sender;
         _mint(msg.sender, _id, _initialSupply, "");
 
-        if (bytes(_uri2).length > 0) {
-            _uris[_id] = _uri2;
-            emit URI(_uri2, _id);
+        if (bytes(_Curi).length > 0) {
+            _uris[_id] = _Curi;
+            emit URI(_Curi, _id);
         }
     }
 
@@ -1242,114 +1269,38 @@ pragma solidity ^0.5.0;
 contract NFTMarket {
     
     // NEED TO DEVELOP BELOW
-    
-    mapping (uint256 => mapping (uint256 => address[])) mapSellers;
-    mapping (uint256 => mapping (uint256 => uint256[])) mapQueue;
-    
-    function sellNFT(uint256 tokenId, uint256 amount, address marketAddress, uint256 sellPrice) public returns (bool) {
-        mapSellers[tokenId][sellPrice].push(msg.sender);
-        mapQueue[tokenId][sellPrice].push(amount);
+    address[][][] public _sellers; // _sellers[id][sellPrice][idx]=seller's address
+    uint256[][][] public _queue; // _queue[id][sellPrice][idx]=amount
 
-        KIP37Token c2=KIP37Token(0x4F0C9e19FD70b5c3ED009cA05c29D65ca8E11464);
-        c2.safeTransferFrom(msg.sender, marketAddress, tokenId, amount, "0x00");
+    function sellNFT(uint256 tokenId, uint256 amount, address KIP37Address, uint256 sellPrice) public returns (bool) {
+        
+        _sellers[tokenId][sellPrice].push(msg.sender);
+        _queue[tokenId][sellPrice].push(amount);
+
+        KIP37Token(KIP37Address).safeTransferFrom(msg.sender,address(this), tokenId, amount, "0x00");
         return true;
     }
 
-    function buyNFT(uint256 tokenId, uint256 amount, address marketAddress, uint256 buyPrice) public payable returns (address, address) {
-        address payable receiver = address(uint160(mapSellers[tokenId][buyPrice][0]));
+    function buyNFT(uint256 tokenId, uint256 amount, address marketAddress, uint256 buyPrice) public payable returns (bool) {
+        address payable receiver = address(uint160(_sellers[tokenId][buyPrice][0]));
 
         // 10**18 PEB = 1 Klay
         receiver.transfer(10**16);
 
         KIP37Token(marketAddress).safeTransferFrom(address(this), msg.sender, tokenId, amount, "0x00");
-        return (address(this), msg.sender);
+        return true;
     }
 
-    function getQueueOfMarket(uint256 tokenId, uint256 price) view public returns (uint256[] memory) {
-        uint256 count = mapQueue[tokenId][price].length;
-        uint256[] memory pQueue = new uint256[](count);
-        for (uint256 i=0; i<count; i++) {
-            pQueue[i] = mapQueue[tokenId][price][i];
-        }
-        return pQueue;
+    function getBalanceOfMarket() view public returns (uint256[] memory) {
+        return _queue[200][9000];
     }
 
-    function getSellersOfMarket(uint256 tokenId, uint256 price) view public returns (address[] memory) {
-        uint256 count = mapSellers[tokenId][price].length;
-        address[] memory pSellers = new address[](count);
-        for (uint256 i=0; i<count; i++) {
-            pSellers[i] = mapSellers[tokenId][price][i];
-        }
-        return pSellers;
+    function whoAmI() view public returns (address) {
+        return msg.sender;
     }
 
-    function getBalanceOf(address marketAccount)
-        public
-        view
-        returns (uint256)
-    {
-        require(
-            marketAccount != address(0),
-            "KIP37: balance query for the zero address"
-        );
-        return marketAccount.balance;
-    }
-
-    function safeTranfer(uint256 tokenId, uint256 amount) public payable {
-        KIP37Token c2=KIP37Token(0x4F0C9e19FD70b5c3ED009cA05c29D65ca8E11464);
-        c2.safeTransferFrom(msg.sender, 0x4F0C9e19FD70b5c3ED009cA05c29D65ca8E11464, tokenId, amount, "0x00");
-    }
-
-    function getAddress() view public returns (address,address) {
-        return (msg.sender, address(this));
-    }
-}
-
-pragma solidity ^0.5.0;
-contract maptest {
-    mapping (uint256 => mapping (uint256 => uint256[])) mapSellers;
-    function setMap(uint256 id, uint256 sellPrice, uint256 amount) public {
-        mapSellers[id][sellPrice].push(amount);
-    }
-    function getMap(uint256 id, uint256 sellPrice, uint256 idx) view public returns (uint256) {
-        return mapSellers[id][sellPrice][idx];
-    }
-
-    // CODE BELOW IS TO RETURN A MAPPING BY DETOUR
-    mapping (uint256 => bool) public userAccounts;
-    uint256[] public indices;
-
-    function setUserAccounts(uint256 idx, bool account) public {
-        indices.push(idx);
-        userAccounts[idx] = account;
-    }
-
-    function getUserAccounts() view public returns (uint256[] memory, bool[] memory){
-        uint256[] memory mIndices = new uint256[](indices.length);
-        bool[] memory mWords = new bool[](indices.length);
-
-        for (uint i=0; i<indices.length; i++) {
-            mIndices[i] = indices[i];
-            mWords[i] = userAccounts[indices[i]];
-        }
-
-        return (mIndices, mWords);
-    }
-
-}
-
-pragma solidity ^0.5.0;
-contract dArrayTest {
-    uint256[] table=[1,2,3,4,5];
-    
-    function listMyPromises() view public returns(uint256[] memory ){ //lists all my past promises
-        uint256 count = table.length;
-        uint256[] memory List = new uint256[](count);
-        
-        for (uint i = 0; i < table.length; i++) {
-            List[i] = uint256(table[i]);            
-        }
-        return List;
+    function whereAmI() view public returns (address) {
+        return address(this);
     }
 
 
