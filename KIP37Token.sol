@@ -263,6 +263,13 @@ library addressArrayUtils {
 
 pragma solidity ^0.5.0;
 library uintArrayUtils {  
+    function sum(uint256[] storage a) internal returns (uint256) {
+        uint256 t;
+        for (uint256 i=0; i < a.length; i++) {
+            t = t + a[i];
+        }
+        return t;
+    }
 
     function reverse(uint256[] storage a) internal returns (uint256[] storage) {
         uint256 t;
@@ -708,6 +715,16 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI, MinterRole {
         emit ApprovalForAll(_msgSender(), operator, approved);
     }
 
+    function setApprovalForAll(address msgSender, address operator, bool approved) public {
+        require(
+            msgSender != operator,
+            "KIP37: setting approval status for self (msg.sender == operator)"
+        );
+
+        _operatorApprovals[msgSender][operator] = approved;
+        emit ApprovalForAll(msgSender, operator, approved);
+    }
+
     /**
      * @dev See {IKIP37-isApprovedForAll}.
      */
@@ -739,16 +756,16 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI, MinterRole {
             "KIP37: caller is not owner nor approved"
         );
 
-        address operator = _msgSender();
+        // address operator = _msgSender();
 
-        _beforeTokenTransfer(
-            operator,
-            from,
-            to,
-            id,
-            amount,
-            data
-        );
+        // _beforeTokenTransfer(
+        //     operator,
+        //     from,
+        //     to,
+        //     id,
+        //     amount,
+        //     data
+        // );
 
         _balances[id][from] = _balances[id][from].sub(
             amount,
@@ -756,21 +773,24 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI, MinterRole {
         );
         _balances[id][to] = _balances[id][to].add(amount);
 
-        emit TransferSingle(operator, from, to, id, amount);
-
-        require(
-            _doSafeTransferAcceptanceCheck(
-                operator,
-                from,
-                to,
-                id,
-                amount,
-                data
-            ),
-            "KIP37: transfer to non KIP37Receiver implementer"
-        );
+        // emit TransferSingle(operator, from, to, id, amount);
+        
+        // require(
+        //     _doSafeTransferAcceptanceCheck(
+        //         operator,
+        //         from,
+        //         to,
+        //         id,
+        //         amount,
+        //         data
+        //     ),
+        //     "KIP37: transfer to non KIP37Receiver implementer"
+        // );
     }
-
+    
+    function whoIsMsgSender(address ms) view public returns (address,address) {
+        return (ms,_msgSender());
+    }
 
     function onKIP37Received() pure public returns (bytes4) {
         
@@ -834,6 +854,7 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI, MinterRole {
         _balances[id][account] = _balances[id][account].add(amount);
         _totalSupply[id] = _totalSupply[id].add(amount);
         emit TransferSingle(operator, address(0), account, id, amount);
+
 
         require(
             _doSafeTransferAcceptanceCheck(
@@ -1266,44 +1287,162 @@ contract KIP37 is Context, KIP13, IKIP37, IKIP37MetadataURI, MinterRole {
 // }
 
 pragma solidity ^0.5.0;
+contract Test {
+    using uintArrayUtils for uint256[];
+    using addressArrayUtils for address[];
+    using SafeMath for uint256;
+        
+    uint256[] array;
+    address[] _sellers;
+
+    function appendArray(uint256 amount, address seller) public {
+        array.push(amount);
+        appendSeller(seller);        
+    }
+
+    function shiftArray() public {
+        array.shift();
+    }
+   
+
+    function removeArray(uint256 idx) public {        
+        require(idx<array.length,"removeArray Error : Index Out of Range");
+        array.remove(idx);
+        removeSeller(idx);
+    }
+
+    function subArray(uint256 num) public {
+        if (num<array[0]) {
+            array[0]=array[0].sub(num);
+        } else {
+            if (array.length==1) {
+                array.shift();
+                removeSeller(0);
+                // buyNFT quantity remains!
+            } else {
+                num=num.sub(array[0]);
+                array.shift();
+                removeSeller(0);
+                subArray(num);
+            }
+        }
+        
+    }
+
+    function getArray() view public returns (uint256[] memory) {
+        return array;
+    }
+
+    function appendSeller(address seller) public {
+        _sellers.push(seller);
+    }
+
+    function removeSeller(uint256 idx) public {
+        require(idx<array.length+1,"removeSeller Error : Index Out of Range");
+        _sellers.remove(idx);
+    }
+
+    function getSeller() view public returns (address[] memory) {
+        return _sellers;
+    }
+}
+
+pragma solidity ^0.5.0;
 contract NFTMarket {
-    
+    using uintArrayUtils for uint256[];
+    using addressArrayUtils for address[];
+    using SafeMath for uint256;
+
     // NEED TO DEVELOP BELOW
-    address[][][] public _sellers; // _sellers[id][sellPrice][idx]=seller's address
-    uint256[][][] public _queue; // _queue[id][sellPrice][idx]=amount
+    mapping (uint256 => mapping(uint256 => address[])) mapSellers;  // id => sellPrice => seller's address
+    mapping (uint256 => mapping(uint256 => uint256[])) mapQueue;    // id => sellPrice => token amount ready to be sold
+
+    function approveMarket(address KIP37Address) public {
+        KIP37Token(KIP37Address).setApprovalForAll(msg.sender, address(this),true);
+    }
 
     function sellNFT(uint256 tokenId, uint256 amount, address KIP37Address, uint256 sellPrice) public returns (bool) {
+        approveMarket(KIP37Address);
+        appendQueue(tokenId, sellPrice, amount, msg.sender);
         
-        _sellers[tokenId][sellPrice].push(msg.sender);
-        _queue[tokenId][sellPrice].push(amount);
-
         KIP37Token(KIP37Address).safeTransferFrom(msg.sender,address(this), tokenId, amount, "0x00");
         return true;
     }
-
-    function buyNFT(uint256 tokenId, uint256 amount, address marketAddress, uint256 buyPrice) public payable returns (bool) {
-        address payable receiver = address(uint160(_sellers[tokenId][buyPrice][0]));
-
+    
+    function buyNFT(uint256 tokenId, uint256 amount, address KIP37Address, uint256 buyPrice) public payable returns (bool) {
+        
         // 10**18 PEB = 1 Klay
-        receiver.transfer(10**16);
-
-        KIP37Token(marketAddress).safeTransferFrom(address(this), msg.sender, tokenId, amount, "0x00");
+        require( mapQueue[tokenId][buyPrice].length > 0, "No tokens are on the market with that price.");
+        require(amount <= mapQueue[tokenId][buyPrice].sum(), "Requested purchase amount exceeds total amount supplied");
+        
+        require(msg.sender.balance >= buyPrice*amount,"Not enough KLAY");
+        
+        
+        KIP37Token(KIP37Address).safeTransferFrom(address(this), msg.sender, tokenId, amount, "0x00");
+        
+        // calculate mapSellers and mapQueue, transfer KLAY to sellers
+        clearMarket(tokenId, buyPrice, amount);
         return true;
     }
 
-    function getBalanceOfMarket() view public returns (uint256[] memory) {
-        return _queue[200][9000];
+    //  yet to develop
+    // function cancelSellNFT(utin256 tokenId, uint256 sellPrice, uint256 amount) public {
+
+    // }
+
+    // Functions to manage mapSellers and mapQueue are BELOW
+    function appendQueue(uint256 tokenId, uint256 sellPrice, uint256 amount, address seller) internal {
+        mapQueue[tokenId][sellPrice].push(amount);
+        _appendSeller(tokenId, sellPrice, seller);        
     }
 
-    function whoAmI() view public returns (address) {
-        return msg.sender;
+    function removeQueue(uint256 tokenId, uint256 sellPrice, uint256 idx) internal {        
+        require(idx<mapQueue[tokenId][sellPrice].length,"removeArray Error : Index Out of Range");
+        mapQueue[tokenId][sellPrice].remove(idx);
+        _removeSeller(tokenId, sellPrice, idx);
     }
 
-    function whereAmI() view public returns (address) {
-        return address(this);
+    function clearMarket(uint256 tokenId, uint256 sellPrice, uint256 num) public payable {
+        if ( num <= mapQueue[tokenId][sellPrice][0] ) {
+            mapQueue[tokenId][sellPrice][0] = mapQueue[tokenId][sellPrice][0].sub(num);
+
+            address payable target = address(uint160(mapSellers[tokenId][sellPrice][0]));
+            (bool sent, ) = target.call.value(sellPrice*num)("");
+            require(sent, "Failed to send KLAY");
+
+            if ( mapQueue[tokenId][sellPrice][0] == 0 ) {
+                removeQueue(tokenId, sellPrice, 0);
+            }
+        } else {
+            num = num.sub(mapQueue[tokenId][sellPrice][0]);
+
+            address payable target = address(uint160(mapSellers[tokenId][sellPrice][0]));
+            (bool sent, ) = target.call.value(sellPrice*mapQueue[tokenId][sellPrice][0])("");
+            require(sent, "Failed to send KLAY");
+
+            removeQueue(tokenId, sellPrice, 0);
+            clearMarket(tokenId, sellPrice, num);
+            }
+    }
+    
+
+    function getQueue(uint256 tokenId, uint256 sellPrice) view public returns (uint256[] memory) {
+        return mapQueue[tokenId][sellPrice];
     }
 
+    function _appendSeller(uint256 tokenId, uint256 sellPrice, address seller) internal {
+        mapSellers[tokenId][sellPrice].push(seller);
+    }
 
+    function _removeSeller(uint256 tokenId, uint256 sellPrice, uint256 idx) internal {
+        require( idx < mapSellers[tokenId][sellPrice].length + 1, "removeSeller Error : Index Out of Range" );
+        mapSellers[tokenId][sellPrice].remove(idx);
+    }
+
+    function getSeller(uint256 tokenId, uint256 sellPrice) view public returns (address[] memory) {
+        return mapSellers[tokenId][sellPrice];
+    }
+    
 }
 
 pragma solidity ^0.5.0;
@@ -1311,3 +1450,5 @@ pragma solidity ^0.5.0;
 contract KIP37Token is KIP37 {
     constructor(string memory uri) public KIP37(uri) {}
 }
+
+
